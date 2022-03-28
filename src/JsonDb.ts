@@ -1,9 +1,9 @@
 import fs from 'fs';
-import { Db, RentalRecord } from './types';
+import { Db } from './types';
 
-export class JsonDb implements Db<RentalRecord> {
+export class JsonDb<T> implements Db<T> {
     static DB_FILE_PATH = './db.json';
-    data: { [key: string]: RentalRecord };
+    data: { [key: string]: T };
 
     constructor() {
         this.data = {};
@@ -17,11 +17,11 @@ export class JsonDb implements Db<RentalRecord> {
         fs.writeFileSync(JsonDb.DB_FILE_PATH, JSON.stringify(this.data, null, 4));
     }
 
-    get(id: string): RentalRecord | undefined {
+    get(id: string): T | undefined {
         return this.data[id];
     }
 
-    set(id: string, record: RentalRecord): void {
+    set(id: string, record: T): void {
         this.data[id] = record;
     }
 }
