@@ -5,6 +5,14 @@ export interface Db<T> {
     set(id: string, record: T): void;
 }
 
+export type ScrapingConfig = {
+    cityOfInterest: string;
+};
+
+export interface ScraperClass<T> {
+    new (config: ScrapingConfig): Scraper<T>;
+}
+
 export interface Scraper<T> {
     isSourceUpdated(db: Db<T>): Promise<boolean>;
     scrape(db: Db<T>): Promise<void>;
