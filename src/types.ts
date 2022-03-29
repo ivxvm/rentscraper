@@ -1,3 +1,9 @@
+export interface Logger {
+    log(msg: string): void;
+    logError(msg: string): void;
+    logProgress(format: string, value: number, total: number): void;
+}
+
 export interface Db<T> {
     load(): void;
     save(): void;
@@ -5,12 +11,17 @@ export interface Db<T> {
     set(id: string, record: T): void;
 }
 
-export type ScrapingConfig = {
+export type ScraperConfig = {
     cityOfInterest: string;
 };
 
+export type ScraperContext = {
+    config: ScraperConfig;
+    logger: Logger;
+};
+
 export interface ScraperClass<T> {
-    new (config: ScrapingConfig): Scraper<T>;
+    new (context: ScraperContext): Scraper<T>;
 }
 
 export interface Scraper<T> {
@@ -29,9 +40,3 @@ export type RentalRecord = {
     roomCount?: number;
     floorCount?: number;
 };
-
-export interface Logger {
-    log(msg: string): void;
-    logError(msg: string): void;
-    logProgress(format: string, value: number, total: number): void;
-}
