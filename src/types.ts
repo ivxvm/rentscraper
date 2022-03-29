@@ -29,3 +29,9 @@ export type RentalRecord = {
     roomCount?: number;
     floorCount?: number;
 };
+
+export interface Logger {
+    log(msg: string): void;
+    logError(msg: string): void;
+    logProgress(format: string, value: number, total: number): void;
+}
