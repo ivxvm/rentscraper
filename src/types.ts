@@ -33,10 +33,15 @@ export type RentalKind = 'House' | 'Appartment';
 
 export type RentalRecord = {
     source: string;
+    url: string;
+    kind?: RentalKind;
     title: string;
+    description: string;
     price: string;
     phone: string;
-    kind?: RentalKind;
     roomCount?: number;
     floorCount?: number;
+    postedAt: string;
+    firstScrapedAt: Date;
+    lastScrapedAt: Date;
 };
