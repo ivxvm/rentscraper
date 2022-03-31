@@ -10,6 +10,7 @@ import { RentalRecord } from './types';
     process.on('exit', () => {
         logger.log('Received exit signal');
         logger.log('Saving database');
+        logger.log('');
         db.save();
     });
     const scraper = new OlxScraper({

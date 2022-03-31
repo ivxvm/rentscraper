@@ -54,10 +54,11 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
 
     async scrape(db: Db<RentalRecord>): Promise<void> {
         const config = this.context.config;
+        const logger = this.context.logger;
         const browser = await firefox.launch();
         let totalPages = 999;
+        logger.startProgress('OlxScraper: Scraping page {value}/{total}', 1);
         for (let pageIndex = 1; pageIndex <= totalPages; pageIndex++) {
-            this.log(`Scraping page ${pageIndex}/${totalPages}`);
             const listingUrl = `${BASE_URL}/${config.cityOfInterest}/?page=${pageIndex}`;
             this.log(`Processing ${listingUrl}`);
             const listingPage = await browser.newPage({ acceptDownloads: false });
@@ -67,6 +68,7 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
             if (totalPagesElem && totalPagesText) {
                 totalPages = Number.parseInt(totalPagesText.trim());
             }
+            logger.updateProgress(pageIndex, totalPages);
             type OfferHeader = {
                 id: string;
                 url: string;
@@ -196,6 +198,7 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
                 this.emit('recordScraped', offerHeader.id, newRecord);
             }
         }
+        logger.endProgress();
     }
 
     private log(msg: any) {
@@ -204,9 +207,5 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
 
     private logError(msg: any) {
         this.context.logger.logError(`OlxScraper: ${msg}`);
-    }
-
-    private logProgress(format: string, value: number, total: number) {
-        this.context.logger.logProgress(`OlxScraper: ${format}`, value, total);
     }
 };

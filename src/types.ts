@@ -3,7 +3,9 @@ import { EventEmitter } from 'events';
 export interface Logger {
     log(msg: string): void;
     logError(msg: string): void;
-    logProgress(format: string, value: number, total: number): void;
+    startProgress(format: string, value?: number, total?: number): void;
+    updateProgress(value?: number, total?: number): void;
+    endProgress(): void;
 }
 
 export interface Db<T> {

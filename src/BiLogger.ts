@@ -1,7 +1,6 @@
 import fs from 'fs';
 import { EOL } from 'os';
 import chalk from 'chalk';
-import cliProgress from 'cli-progress';
 import { Logger } from './types';
 
 const createDateTimePrefix = () => {
@@ -11,18 +10,30 @@ const createDateTimePrefix = () => {
     return `[${localeDateString} ${localeTimeString}]`;
 };
 
+const stdout = process.stdout;
+
 export class BiLogger implements Logger {
     logFilePath: string;
-    progressBarByFormatString: { [key: string]: cliProgress.SingleBar };
+    progress?: {
+        format: string;
+        value?: number;
+        total?: number;
+    };
 
     constructor(logFilePath: string) {
         this.logFilePath = logFilePath;
-        this.progressBarByFormatString = {};
     }
 
     log(msg: string): void {
         const prefix = createDateTimePrefix();
-        console.log(`${chalk.cyan(prefix)} ${msg}`);
+        if (this.progress) {
+            stdout.clearLine(0);
+            stdout.cursorTo(0);
+            stdout.write(`${chalk.cyan(prefix)} ${msg}${EOL}`);
+            stdout.write(chalk.yellow(`${prefix} ${this.buildProgressMsg()}`));
+        } else {
+            stdout.write(`${EOL}${chalk.cyan(prefix)} ${msg}`);
+        }
         fs.writeFile(this.logFilePath, `${prefix} ${msg}${EOL}`, { flag: 'a' }, (err) => {
             err && console.error('Error writing to log file:', err);
         });
@@ -30,25 +41,48 @@ export class BiLogger implements Logger {
 
     logError(msg: string): void {
         const prefix = createDateTimePrefix();
-        const prefixedMsg = `${prefix} ${msg}${EOL}`;
-        console.error(chalk.red(prefixedMsg));
-        fs.writeFile(this.logFilePath, prefixedMsg, { flag: 'a' }, (err) => {
+        if (this.progress) {
+            stdout.clearLine(0);
+            stdout.cursorTo(0);
+            stdout.write(`${chalk.red(prefix)} ${msg}${EOL}`);
+            stdout.write(chalk.yellow(`${prefix} ${this.buildProgressMsg()}`));
+        } else {
+            stdout.write(`${EOL}${chalk.red(prefix)} ${msg}`);
+        }
+        fs.writeFile(this.logFilePath, `${prefix} ${msg}${EOL}`, { flag: 'a' }, (err) => {
             err && console.error('Error writing to log file:', err);
         });
     }
 
-    logProgress(format: string, value: number, total: number): void {
-        const existingBar = this.progressBarByFormatString[format];
-        if (existingBar) {
-            existingBar.update(value);
-            if (value >= total) {
-                existingBar.stop();
-                delete this.progressBarByFormatString[format];
+    startProgress(format: string, value?: number, total?: number): void {
+        this.progress = { format, value, total };
+        const prefix = createDateTimePrefix();
+        stdout.write(chalk.yellow(`${EOL}${prefix} ${this.buildProgressMsg()}`));
+    }
+
+    updateProgress(value?: number, total?: number): void {
+        if (this.progress) {
+            if (value) {
+                this.progress.value = value;
             }
-        } else {
-            const bar = new cliProgress.SingleBar({ format: `${format}${EOL}` });
-            bar.start(total, value);
-            this.progressBarByFormatString[format] = bar;
+            if (total) {
+                this.progress.total = total;
+            }
+            const prefix = createDateTimePrefix();
+            stdout.clearLine(0);
+            stdout.cursorTo(0);
+            stdout.write(chalk.yellow(`${prefix} ${this.buildProgressMsg()}`));
+        }
+    }
+
+    endProgress(): void {
+        delete this.progress;
+    }
+
+    private buildProgressMsg() {
+        if (this.progress) {
+            const { format, value, total } = this.progress;
+            return format.replace('{value}', value?.toString() || '?').replace('{total}', total?.toString() || '?');
         }
     }
 }
