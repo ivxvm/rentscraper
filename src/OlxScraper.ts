@@ -1,11 +1,7 @@
 import assert from 'assert';
 import { EventEmitter } from 'events';
-import axios from 'axios';
-import pThrottle, { ThrottledFunction } from 'p-throttle';
-import { JSDOM, ResourceLoader, VirtualConsole } from 'jsdom';
-import { CachingResourceLoader, mockMissingApis, waitForCondition } from './helpers';
+import { firefox } from 'playwright-firefox';
 import { Db, RentalKind, RentalRecord, Scraper, ScraperClass, ScraperContext } from './types';
-import * as constants from './constants';
 
 const BASE_URL = 'https://www.olx.ua/nedvizhimost';
 const SELECTORS = {
@@ -21,60 +17,56 @@ const SELECTORS = {
     offerPropertyBox: 'ul li p',
 };
 
-const WINDOW_CLOSE_DELAY_MS = 5000;
-const WAIT_FOR_CONDITION_POLL_INTERVAL_MS = 100;
-
 const extractIdFromUrl = (url: string) => url.split('/')?.at(-1)?.split('.html')?.at(0);
 
 export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter implements Scraper<RentalRecord> {
-    context: ScraperContext;
-    resourceLoader: ResourceLoader;
-    throttle: <T extends readonly unknown[], R>(fn: (...args: T) => R) => ThrottledFunction<T, R>;
+    private readonly context: ScraperContext;
 
     constructor(context: ScraperContext) {
         super();
         this.context = context;
-        this.resourceLoader = new CachingResourceLoader(context.logger);
-        this.throttle = pThrottle({
-            limit: 1,
-            interval: context.config.pageQueryIntervalMs,
-        });
     }
 
     async isSourceUpdated(db: Db<RentalRecord>): Promise<boolean> {
         this.log('Checking if source was updated');
         const city = this.context.config.cityOfInterest;
-        const sourceDOM = await this.openPage(`${BASE_URL}/${city}`);
-        const sourceDocument = sourceDOM.window.document;
-        for (const offer of Array.from(sourceDocument.querySelectorAll(SELECTORS.offer))) {
-            const titleLink = offer.querySelector(SELECTORS.offer_titleLink);
+        const browser = await firefox.launch();
+        const page = await browser.newPage({ acceptDownloads: false });
+        await page.goto(`${BASE_URL}/${city}`);
+        for (const offer of await page.$$(SELECTORS.offer)) {
+            const titleLink = await offer.$(SELECTORS.offer_titleLink);
             assert.ok(titleLink);
-            assert.ok(titleLink instanceof sourceDOM.window.HTMLAnchorElement);
-            assert.ok(titleLink.href);
-            const id = extractIdFromUrl(titleLink.href.trim());
+            assert.ok(await titleLink.evaluate((elem) => elem instanceof HTMLAnchorElement));
+            const href = await titleLink.evaluate((elem: HTMLAnchorElement) => elem.href);
+            assert.ok(href);
+            const id = extractIdFromUrl(href.trim());
             assert.ok(id);
             if (!db.get(id)) {
                 this.log('Found new data in source');
+                browser.close();
                 return true;
             }
         }
         this.log('No new data found');
+        await browser.close();
         return false;
     }
 
     async scrape(db: Db<RentalRecord>): Promise<void> {
-        process.on('unhandledRejection', this.logUnhandledRejection);
         const config = this.context.config;
-        let total = 999;
-        for (let page = 1; page <= total; page++) {
-            const listingUrl = `${BASE_URL}/${config.cityOfInterest}/?page=${page}`;
-            const listingDOM = await this.openPage(listingUrl);
-            const listingDocument = listingDOM.window.document;
-            const totalPagesElem = listingDocument.querySelector(SELECTORS.totalPages);
-            if (totalPagesElem && totalPagesElem.textContent) {
-                total = Number.parseInt(totalPagesElem.textContent.trim());
+        const browser = await firefox.launch();
+        let totalPages = 999;
+        for (let pageIndex = 1; pageIndex <= totalPages; pageIndex++) {
+            this.log(`Scraping page ${pageIndex}/${totalPages}`);
+            const listingUrl = `${BASE_URL}/${config.cityOfInterest}/?page=${pageIndex}`;
+            this.log(`Processing ${listingUrl}`);
+            const listingPage = await browser.newPage({ acceptDownloads: false });
+            await listingPage.goto(listingUrl, { waitUntil: 'domcontentloaded' });
+            const totalPagesElem = await listingPage.$(SELECTORS.totalPages);
+            const totalPagesText = totalPagesElem && (await totalPagesElem.textContent());
+            if (totalPagesElem && totalPagesText) {
+                totalPages = Number.parseInt(totalPagesText.trim());
             }
-            this.logProgress('Scraping page {value}/{total}', page, total);
             type OfferHeader = {
                 id: string;
                 url: string;
@@ -83,66 +75,69 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
                 price: string;
             };
             const offerHeaders: OfferHeader[] = [];
-            for (const offerElem of Array.from(listingDocument.querySelectorAll(SELECTORS.offer))) {
-                const titleLink = offerElem.querySelector(SELECTORS.offer_titleLink);
+            for (const offerElem of await listingPage.$$(SELECTORS.offer)) {
+                const titleLink = await offerElem.$(SELECTORS.offer_titleLink);
                 assert.ok(titleLink);
-                assert.ok(titleLink instanceof listingDOM.window.HTMLAnchorElement);
-                const url = titleLink.href.trim();
+                assert.ok(await titleLink.evaluate((elem) => elem instanceof HTMLAnchorElement));
+                const url = await titleLink.evaluate((elem: HTMLAnchorElement) => elem.href.trim());
                 assert.ok(url);
                 const id = extractIdFromUrl(url);
                 assert.ok(id);
-                const title = titleLink.textContent?.trim();
+                const title = await titleLink.evaluate((elem) => elem.textContent?.trim());
                 assert.ok(title);
-                const postingDate = offerElem.querySelector(SELECTORS.postingDate)?.textContent?.trim();
+                const postingDateElem = await offerElem.$(SELECTORS.postingDate);
+                const postingDate = await postingDateElem?.evaluate((elem) => elem.textContent?.trim());
                 assert.ok(postingDate);
-                const price = offerElem.querySelector(SELECTORS.price)?.textContent?.trim();
+                const priceElem = await offerElem.$(SELECTORS.price);
+                const price = await priceElem?.evaluate((elem) => elem?.textContent?.trim());
                 assert.ok(price);
                 offerHeaders.push({ id, url, title, postingDate, price });
             }
-            listingDOM.window.onload = () => setTimeout(() => listingDOM.window.close(), WINDOW_CLOSE_DELAY_MS);
+            await listingPage.close();
             for (const offerHeader of offerHeaders) {
                 if (this.context.config.skipExistingRecords && db.get(offerHeader.id)) {
                     this.log(`Found offer ${offerHeader.id} data in database, skipping to next offer`);
                     continue;
                 }
-                const offerDOM = await this.openPageWithJS(offerHeader.url);
-                const offerDocument = offerDOM.window.document;
+                this.log(`Processing ${offerHeader.url}`);
+                const offerPage = await browser.newPage();
+                await offerPage.goto(offerHeader.url, { timeout: 0 });
+                let phoneButtonPresent = true;
                 try {
-                    await waitForCondition(
-                        config.waitSelectorTimeoutMs,
-                        WAIT_FOR_CONDITION_POLL_INTERVAL_MS,
-                        () => !!offerDocument.querySelector(SELECTORS.showPhoneButton)
-                    );
+                    await offerPage.waitForSelector(SELECTORS.showPhoneButton, {
+                        timeout: config.waitSelectorTimeoutMs,
+                    });
                 } catch (error) {
-                    this.logError(error);
-                    this.log('Skipping to next offer');
-                    continue;
+                    phoneButtonPresent = false;
                 }
                 let phone: string | undefined;
-                if (!offerDocument.querySelector(SELECTORS.authPrompt)) {
-                    const showPhoneButton = offerDocument.querySelector(SELECTORS.showPhoneButton);
-                    assert.ok(showPhoneButton instanceof offerDOM.window.HTMLButtonElement);
-                    showPhoneButton.click();
-                    const phonesElem = offerDocument.querySelector(SELECTORS.phones);
+                const authPromptElem = await offerPage.$(SELECTORS.authPrompt);
+                if (!authPromptElem && phoneButtonPresent) {
+                    const showPhoneButton = await offerPage.$(SELECTORS.showPhoneButton);
+                    assert.ok(showPhoneButton);
+                    assert.ok(await showPhoneButton.evaluate((elem) => elem instanceof HTMLButtonElement));
+                    await showPhoneButton.click();
+                    const phonesElem = await offerPage.$(SELECTORS.phones);
                     try {
-                        await waitForCondition(
-                            config.waitSelectorTimeoutMs,
-                            WAIT_FOR_CONDITION_POLL_INTERVAL_MS,
-                            () => phonesElem?.textContent?.includes('xxx') === false
+                        await offerPage.waitForFunction(
+                            (elem) => elem?.textContent?.includes('xxx') === false,
+                            phonesElem
                         );
                     } catch (error) {
                         this.logError(error);
                         this.log('Skipping to next offer');
+                        await offerPage.close();
                         continue;
                     }
-                    phone = phonesElem?.textContent?.trim();
+                    phone = await phonesElem?.evaluate((elem) => elem.textContent?.trim());
                 }
-                const description = offerDocument.querySelector(SELECTORS.description)?.textContent?.trim() || '';
+                const descriptionElem = await offerPage.$(SELECTORS.description);
+                const description = (await descriptionElem?.evaluate((elem) => elem.textContent?.trim())) || '';
                 let kind: RentalKind | undefined;
                 let roomCount: number | undefined;
                 let floorCount: number | undefined;
-                for (const propBox of Array.from(offerDocument.querySelectorAll(SELECTORS.offerPropertyBox))) {
-                    const text = propBox.textContent;
+                for (const propBox of await offerPage.$$(SELECTORS.offerPropertyBox)) {
+                    const text = await propBox.textContent();
                     if (text?.includes('Тип дома')) {
                         if (text?.includes('Дом') || text?.includes('Коттедж') || text?.includes('Дача')) {
                             kind = 'House';
@@ -168,7 +163,7 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
                         }
                     }
                 }
-                offerDOM.window.onload = () => setTimeout(() => offerDOM.window.close(), WINDOW_CLOSE_DELAY_MS);
+                await offerPage.close();
                 const oldRecord = db.get(offerHeader.id);
                 const now = new Date();
                 const newRecord: RentalRecord = {
@@ -201,43 +196,17 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
                 this.emit('recordScraped', offerHeader.id, newRecord);
             }
         }
-        process.off('unhandledRejection', this.logUnhandledRejection);
     }
 
-    logUnhandledRejection = (reason: any) => {
-        this.logError(`Unhandled promise rejection: ${reason}`);
-    };
-
-    async openPage(url: string): Promise<JSDOM> {
-        this.log(`Querying ${url}`);
-        const response = await this.throttle(axios.get)(url);
-        return new JSDOM(response.data);
-    }
-
-    async openPageWithJS(url: string): Promise<JSDOM> {
-        this.log(`Querying ${url}`);
-        const response = await this.throttle(axios.get)(url);
-        const dom = new JSDOM(response.data, {
-            url,
-            userAgent: constants.USER_AGENT,
-            resources: this.resourceLoader,
-            runScripts: 'dangerously',
-            pretendToBeVisual: true,
-            virtualConsole: new VirtualConsole(),
-        });
-        mockMissingApis(dom);
-        return dom;
-    }
-
-    log(msg: any) {
+    private log(msg: any) {
         this.context.logger.log(`OlxScraper: ${msg}`);
     }
 
-    logError(msg: any) {
+    private logError(msg: any) {
         this.context.logger.logError(`OlxScraper: ${msg}`);
     }
 
-    logProgress(format: string, value: number, total: number) {
+    private logProgress(format: string, value: number, total: number) {
         this.context.logger.logProgress(`OlxScraper: ${format}`, value, total);
     }
 };

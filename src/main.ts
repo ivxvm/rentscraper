@@ -7,7 +7,7 @@ import { RentalRecord } from './types';
     const logger = new BiLogger('./log.txt');
     const db = new JsonDb<RentalRecord>();
     db.load();
-    process.on('beforeExit', () => {
+    process.on('exit', () => {
         logger.log('Received exit signal');
         logger.log('Saving database');
         db.save();
@@ -17,8 +17,8 @@ import { RentalRecord } from './types';
         config: {
             cityOfInterest: 'kanev',
             skipExistingRecords: true,
-            waitSelectorTimeoutMs: 5_000,
-            pageQueryIntervalMs: 15_000,
+            waitSelectorTimeoutMs: 5000,
+            pageQueryIntervalMs: 1000,
         },
     });
     let scrapedRecordsCount = 0;
@@ -30,7 +30,6 @@ import { RentalRecord } from './types';
     });
     if (await scraper.isSourceUpdated(db)) {
         await scraper.scrape(db);
-        logger.log('Saving database');
-        db.save();
+        process.exit();
     }
 })();

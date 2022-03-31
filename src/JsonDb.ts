@@ -7,6 +7,9 @@ export class JsonDb<T> implements Db<T> {
 
     constructor() {
         this.data = {};
+        if (!fs.existsSync(JsonDb.DB_FILE_PATH)) {
+            fs.writeFileSync(JsonDb.DB_FILE_PATH, '{}');
+        }
     }
 
     load(): void {
