@@ -1,3 +1,5 @@
+import { EventEmitter } from 'events';
+
 export interface Logger {
     log(msg: string): void;
     logError(msg: string): void;
@@ -12,7 +14,10 @@ export interface Db<T> {
 }
 
 export type ScraperConfig = {
+    skipExistingRecords: boolean;
     cityOfInterest: string;
+    waitSelectorTimeoutMs: number;
+    pageQueryIntervalMs: number;
 };
 
 export type ScraperContext = {
@@ -24,7 +29,7 @@ export interface ScraperClass<T> {
     new (context: ScraperContext): Scraper<T>;
 }
 
-export interface Scraper<T> {
+export interface Scraper<T> extends EventEmitter {
     isSourceUpdated(db: Db<T>): Promise<boolean>;
     scrape(db: Db<T>): Promise<void>;
 }
@@ -38,7 +43,7 @@ export type RentalRecord = {
     title: string;
     description: string;
     price: string;
-    phone: string;
+    phone?: string;
     roomCount?: number;
     floorCount?: number;
     postedAt: string;

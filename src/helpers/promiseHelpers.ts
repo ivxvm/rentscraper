@@ -10,7 +10,7 @@ export const waitForCondition = (timeoutMs: number, intervalMs: number, conditio
             }
             if (timePassed >= timeoutMs) {
                 clearInterval(intervalHandle);
-                reject();
+                reject(new Error(`waitForCondition timed out while waiting for ${condition.toString()}`));
                 return;
             }
         }, intervalMs);

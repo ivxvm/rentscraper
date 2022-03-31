@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { EOL } from 'os';
 import chalk from 'chalk';
 import cliProgress from 'cli-progress';
 import { Logger } from './types';
@@ -21,18 +22,18 @@ export class BiLogger implements Logger {
 
     log(msg: string): void {
         const prefix = createDateTimePrefix();
-        console.log(chalk.cyan(prefix), msg);
-        fs.writeFile(this.logFilePath, `${prefix} ${msg}`, { flag: 'a' }, (err) => {
-            console.error('Error writing to log file:', err);
+        console.log(`${chalk.cyan(prefix)} ${msg}`);
+        fs.writeFile(this.logFilePath, `${prefix} ${msg}${EOL}`, { flag: 'a' }, (err) => {
+            err && console.error('Error writing to log file:', err);
         });
     }
 
     logError(msg: string): void {
         const prefix = createDateTimePrefix();
-        const prefixedMsg = `${prefix} ${msg}`;
+        const prefixedMsg = `${prefix} ${msg}${EOL}`;
         console.error(chalk.red(prefixedMsg));
         fs.writeFile(this.logFilePath, prefixedMsg, { flag: 'a' }, (err) => {
-            console.error('Error writing to log file:', err);
+            err && console.error('Error writing to log file:', err);
         });
     }
 
@@ -45,7 +46,7 @@ export class BiLogger implements Logger {
                 delete this.progressBarByFormatString[format];
             }
         } else {
-            const bar = new cliProgress.SingleBar({ format });
+            const bar = new cliProgress.SingleBar({ format: `${format}${EOL}` });
             bar.start(total, value);
             this.progressBarByFormatString[format] = bar;
         }
