@@ -2,6 +2,7 @@ import fs from 'fs';
 import { EOL } from 'os';
 import chalk from 'chalk';
 import { Logger } from './types';
+import { tildify } from './helpers';
 
 const createDateTimePrefix = () => {
     const date = new Date();
@@ -21,7 +22,7 @@ export class BiLogger implements Logger {
     };
 
     constructor(logFilePath: string) {
-        this.logFilePath = logFilePath;
+        this.logFilePath = tildify(logFilePath);
     }
 
     log(msg: string): void {

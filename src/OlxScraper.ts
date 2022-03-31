@@ -1,7 +1,8 @@
 import assert from 'assert';
 import { EventEmitter } from 'events';
-import { firefox } from 'playwright-firefox';
+import { firefox, Page } from 'playwright-firefox';
 import { Db, RentalKind, RentalRecord, Scraper, ScraperClass, ScraperContext } from './types';
+import pThrottle, { ThrottledFunction } from 'p-throttle';
 
 const BASE_URL = 'https://www.olx.ua/nedvizhimost';
 const SELECTORS = {
@@ -18,13 +19,21 @@ const SELECTORS = {
 };
 
 const extractIdFromUrl = (url: string) => url.split('/')?.at(-1)?.split('.html')?.at(0);
+const boundGoto = (page: Page) => page.goto.bind(page);
 
 export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter implements Scraper<RentalRecord> {
     private readonly context: ScraperContext;
+    private readonly throttle: <T extends readonly unknown[], R>(
+        function_: (...args: T) => R
+    ) => ThrottledFunction<T, R>;
 
     constructor(context: ScraperContext) {
         super();
         this.context = context;
+        this.throttle = pThrottle({
+            interval: context.config.pageQueryIntervalMs,
+            limit: 1,
+        });
     }
 
     async isSourceUpdated(db: Db<RentalRecord>): Promise<boolean> {
@@ -32,7 +41,7 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
         const city = this.context.config.cityOfInterest;
         const browser = await firefox.launch();
         const page = await browser.newPage({ acceptDownloads: false });
-        await page.goto(`${BASE_URL}/${city}`);
+        await this.throttle(boundGoto(page))(`${BASE_URL}/${city}`);
         for (const offer of await page.$$(SELECTORS.offer)) {
             const titleLink = await offer.$(SELECTORS.offer_titleLink);
             assert.ok(titleLink);
@@ -62,7 +71,7 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
             const listingUrl = `${BASE_URL}/${config.cityOfInterest}/?page=${pageIndex}`;
             this.log(`Processing ${listingUrl}`);
             const listingPage = await browser.newPage({ acceptDownloads: false });
-            await listingPage.goto(listingUrl, { waitUntil: 'domcontentloaded' });
+            await this.throttle(boundGoto(listingPage))(listingUrl, { waitUntil: 'domcontentloaded' });
             const totalPagesElem = await listingPage.$(SELECTORS.totalPages);
             const totalPagesText = totalPagesElem && (await totalPagesElem.textContent());
             if (totalPagesElem && totalPagesText) {
@@ -103,7 +112,7 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
                 }
                 this.log(`Processing ${offerHeader.url}`);
                 const offerPage = await browser.newPage();
-                await offerPage.goto(offerHeader.url, { timeout: 0 });
+                await this.throttle(boundGoto(offerPage))(offerHeader.url, { timeout: 0 });
                 let phoneButtonPresent = true;
                 try {
                     await offerPage.waitForSelector(SELECTORS.showPhoneButton, {

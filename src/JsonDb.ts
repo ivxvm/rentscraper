@@ -1,23 +1,25 @@
 import fs from 'fs';
+import { tildify } from './helpers';
 import { Db } from './types';
 
 export class JsonDb<T> implements Db<T> {
-    static DB_FILE_PATH = './db.json';
+    dbFilePath: string;
     data: { [key: string]: T };
 
-    constructor() {
+    constructor(filePath: string) {
+        this.dbFilePath = tildify(filePath);
         this.data = {};
-        if (!fs.existsSync(JsonDb.DB_FILE_PATH)) {
-            fs.writeFileSync(JsonDb.DB_FILE_PATH, '{}');
+        if (!fs.existsSync(this.dbFilePath)) {
+            fs.writeFileSync(this.dbFilePath, '{}');
         }
     }
 
     load(): void {
-        this.data = JSON.parse(fs.readFileSync(JsonDb.DB_FILE_PATH).toString());
+        this.data = JSON.parse(fs.readFileSync(this.dbFilePath).toString());
     }
 
     save(): void {
-        fs.writeFileSync(JsonDb.DB_FILE_PATH, JSON.stringify(this.data, null, 4));
+        fs.writeFileSync(this.dbFilePath, JSON.stringify(this.data, null, 4));
     }
 
     get(id: string): T | undefined {
