@@ -13,11 +13,13 @@ export interface Db<T> {
     save(): void;
     get(id: string): T | undefined;
     set(id: string, record: T): void;
+    take(n: number, sort: (a: T, b: T) => number): void;
 }
 
 export type ScraperConfig = {
-    skipExistingRecords: boolean;
     cityOfInterest: string;
+    quickCheckUpdates: boolean;
+    skipExistingRecords: boolean;
     waitSelectorTimeoutMs: number;
     pageQueryIntervalMs: number;
 };
@@ -32,7 +34,6 @@ export interface ScraperClass<T> {
 }
 
 export interface Scraper<T> extends EventEmitter {
-    isSourceUpdated(db: Db<T>): Promise<boolean>;
     scrape(db: Db<T>): Promise<void>;
 }
 
@@ -49,6 +50,6 @@ export type RentalRecord = {
     roomCount?: number;
     floorCount?: number;
     postedAt: string;
-    firstScrapedAt: Date;
-    lastScrapedAt: Date;
+    firstScrapedAt: string;
+    lastScrapedAt: string;
 };

@@ -36,35 +36,37 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
         });
     }
 
-    async isSourceUpdated(db: Db<RentalRecord>): Promise<boolean> {
-        this.log('Checking if source was updated');
-        const city = this.context.config.cityOfInterest;
-        const browser = await firefox.launch();
-        const page = await browser.newPage({ acceptDownloads: false });
-        await this.throttle(boundGoto(page))(`${BASE_URL}/${city}`);
-        for (const offer of await page.$$(SELECTORS.offer)) {
-            const titleLink = await offer.$(SELECTORS.offer_titleLink);
-            assert.ok(titleLink);
-            assert.ok(await titleLink.evaluate((elem) => elem instanceof HTMLAnchorElement));
-            const href = await titleLink.evaluate((elem: HTMLAnchorElement) => elem.href);
-            assert.ok(href);
-            const id = extractIdFromUrl(href.trim());
-            assert.ok(id);
-            if (!db.get(id)) {
-                this.log('Found new data in source');
-                browser.close();
-                return true;
-            }
-        }
-        this.log('No new data found');
-        await browser.close();
-        return false;
-    }
-
     async scrape(db: Db<RentalRecord>): Promise<void> {
         const config = this.context.config;
         const logger = this.context.logger;
         const browser = await firefox.launch();
+        if (config.quickCheckUpdates) {
+            this.log('Checking if source was updated');
+            const page = await browser.newPage({ acceptDownloads: false });
+            await this.throttle(boundGoto(page))(`${BASE_URL}/${config.cityOfInterest}`);
+            let sourceWasUpdated = false;
+            for (const offer of await page.$$(SELECTORS.offer)) {
+                const titleLink = await offer.$(SELECTORS.offer_titleLink);
+                assert.ok(titleLink);
+                assert.ok(await titleLink.evaluate((elem) => elem instanceof HTMLAnchorElement));
+                const href = await titleLink.evaluate((elem: HTMLAnchorElement) => elem.href);
+                assert.ok(href);
+                const id = extractIdFromUrl(href.trim());
+                assert.ok(id);
+                if (!db.get(id)) {
+                    sourceWasUpdated = true;
+                    break;
+                }
+            }
+            await page.close();
+            if (sourceWasUpdated) {
+                this.log('Found new data in source');
+            } else {
+                this.log('No new data found');
+                await browser.close();
+                return;
+            }
+        }
         let totalPages = 999;
         logger.startProgress('OlxScraper: Scraping page {value}/{total}', 1);
         for (let pageIndex = 1; pageIndex <= totalPages; pageIndex++) {
@@ -188,8 +190,8 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
                     description,
                     price: offerHeader.price,
                     postedAt: offerHeader.postingDate,
-                    firstScrapedAt: oldRecord?.firstScrapedAt || now,
-                    lastScrapedAt: now,
+                    firstScrapedAt: (oldRecord?.firstScrapedAt || now).toString(),
+                    lastScrapedAt: now.toString(),
                 };
                 if (oldRecord) {
                     this.log(`Previously scraped record ${offerHeader.id} was updated`);

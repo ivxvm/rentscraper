@@ -1,4 +1,5 @@
 import fs from 'fs';
+import chalk from 'chalk';
 import { Command } from 'commander';
 import { BiLogger } from './BiLogger';
 import { JsonDb } from './JsonDb';
@@ -18,6 +19,7 @@ program
     .command('scrape')
     .description('scrape new data from sites into database')
     .argument('<city>', 'city of interest')
+    .option("-qc, --quick-check', 'quick check for updates, don't scrape if data wasn't updated")
     .action(async (city: string) => {
         const options = program.optsWithGlobals();
         const logger = new BiLogger(options.logfile);
@@ -33,6 +35,7 @@ program
             logger,
             config: {
                 cityOfInterest: city,
+                quickCheckUpdates: options.quickCheck,
                 skipExistingRecords: true,
                 waitSelectorTimeoutMs: 5000,
                 pageQueryIntervalMs: 10_000,
@@ -45,9 +48,27 @@ program
                 db.save();
             }
         });
-        if (await scraper.isSourceUpdated(db)) {
-            await scraper.scrape(db);
-            process.exit();
+        await scraper.scrape(db);
+        process.exit();
+    });
+
+program
+    .command('digest')
+    .description('return latest rental records')
+    .argument('<n>', 'number of records to return')
+    .action((n: string) => {
+        const options = program.optsWithGlobals();
+        const db = new JsonDb<RentalRecord>(options.dbfile);
+        db.load();
+        const latestRecords = db.take(
+            Number.parseInt(n),
+            (a, b) => Date.parse(b.firstScrapedAt) - Date.parse(a.firstScrapedAt)
+        );
+        for (const record of latestRecords) {
+            const prefix = chalk.cyan(
+                `[${new Date(record.firstScrapedAt).toLocaleString(undefined, { hour12: false })}]`
+            );
+            console.log(`${prefix} ${record.url}`);
         }
     });
 

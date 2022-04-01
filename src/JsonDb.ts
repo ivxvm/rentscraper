@@ -29,4 +29,8 @@ export class JsonDb<T> implements Db<T> {
     set(id: string, record: T): void {
         this.data[id] = record;
     }
+
+    take(n: number, sort: (a: T, b: T) => number): T[] {
+        return Object.values(this.data).sort(sort).slice(0, n);
+    }
 }
