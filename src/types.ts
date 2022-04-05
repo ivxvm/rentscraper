@@ -17,7 +17,7 @@ export interface Db<T> {
 }
 
 export type ScraperConfig = {
-    cityOfInterest: string;
+    query: string;
     quickCheckUpdates: boolean;
     skipExistingRecords: boolean;
     waitSelectorTimeoutMs: number;
@@ -44,12 +44,15 @@ export type RentalRecord = {
     url: string;
     kind?: RentalKind;
     title: string;
-    description: string;
+    description?: string;
     price: string;
     phone?: string;
+    guestCount?: number;
     roomCount?: number;
+    bedCount?: number;
+    bathCount?: number;
     floorCount?: number;
-    postedAt: string;
+    postedAt?: string;
     firstScrapedAt: string;
     lastScrapedAt: string;
 };

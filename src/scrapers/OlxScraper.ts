@@ -1,7 +1,7 @@
 import assert from 'assert';
 import { EventEmitter } from 'events';
 import { firefox, Page } from 'playwright-firefox';
-import { Db, RentalKind, RentalRecord, Scraper, ScraperClass, ScraperContext } from './types';
+import { Db, RentalKind, RentalRecord, Scraper, ScraperClass, ScraperContext } from '../types';
 import pThrottle, { ThrottledFunction } from 'p-throttle';
 
 const BASE_URL = 'https://www.olx.ua/nedvizhimost';
@@ -43,7 +43,7 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
         if (config.quickCheckUpdates) {
             this.log('Checking if source was updated');
             const page = await browser.newPage({ acceptDownloads: false });
-            await this.throttle(boundGoto(page))(`${BASE_URL}/${config.cityOfInterest}`);
+            await this.throttle(boundGoto(page))(`${BASE_URL}/${config.query}`);
             let sourceWasUpdated = false;
             for (const offer of await page.$$(SELECTORS.offer)) {
                 const titleLink = await offer.$(SELECTORS.offer_titleLink);
@@ -70,7 +70,7 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
         let totalPages = 999;
         logger.startProgress('OlxScraper: Scraping page {value}/{total}', 1);
         for (let pageIndex = 1; pageIndex <= totalPages; pageIndex++) {
-            const listingUrl = `${BASE_URL}/${config.cityOfInterest}/?page=${pageIndex}`;
+            const listingUrl = `${BASE_URL}/${config.query}/?page=${pageIndex}`;
             this.log(`Processing ${listingUrl}`);
             const listingPage = await browser.newPage({ acceptDownloads: false });
             await this.throttle(boundGoto(listingPage))(listingUrl, { waitUntil: 'domcontentloaded' });
@@ -108,7 +108,7 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
             }
             await listingPage.close();
             for (const offerHeader of offerHeaders) {
-                if (this.context.config.skipExistingRecords && db.get(offerHeader.id)) {
+                if (config.skipExistingRecords && db.get(offerHeader.id)) {
                     this.log(`Found offer ${offerHeader.id} data in database, skipping to next offer`);
                     continue;
                 }
@@ -190,7 +190,7 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
                     description,
                     price: offerHeader.price,
                     postedAt: offerHeader.postingDate,
-                    firstScrapedAt: (oldRecord?.firstScrapedAt || now).toString(),
+                    firstScrapedAt: oldRecord?.firstScrapedAt || now.toString(),
                     lastScrapedAt: now.toString(),
                 };
                 if (oldRecord) {
