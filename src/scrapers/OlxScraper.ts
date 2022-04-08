@@ -8,6 +8,7 @@ const BASE_URL = 'https://www.olx.ua/nedvizhimost';
 const SELECTORS = {
     offer: 'table.offers tr.wrap',
     offer_titleLink: '.title-cell a.linkWithHash',
+    currentPage: '[data-cy="page-link-current"]',
     totalPages: '[data-cy="page-link-last"]',
     postingDate: '.bottom-cell small:last-child',
     price: '.price',
@@ -73,7 +74,10 @@ export const OlxScraper: ScraperClass<RentalRecord> = class extends EventEmitter
             const listingUrl = `${BASE_URL}/${config.query}/?page=${pageIndex}`;
             this.log(`Processing ${listingUrl}`);
             const listingPage = await browser.newPage({ acceptDownloads: false });
-            await this.throttle(boundGoto(listingPage))(listingUrl, { waitUntil: 'domcontentloaded' });
+            await this.throttle(boundGoto(listingPage))(listingUrl, { waitUntil: 'commit' });
+            await listingPage.waitForSelector(SELECTORS.currentPage, {
+                timeout: config.waitSelectorTimeoutMs,
+            });
             const totalPagesElem = await listingPage.$(SELECTORS.totalPages);
             const totalPagesText = totalPagesElem && (await totalPagesElem.textContent());
             if (totalPagesElem && totalPagesText) {

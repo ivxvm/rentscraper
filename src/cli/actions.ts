@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import { BiLogger } from '../BiLogger';
 import { JsonDb } from '../JsonDb';
-import { RentalRecord } from '../types';
+import { RentalRecord, ScraperConfig } from '../types';
 import { tildify } from '../helpers';
 import { OlxScraper, AirbnbScraper } from '../scrapers';
 
@@ -24,29 +24,16 @@ export async function scrape(this: Command, source: string, city: string) {
         printSources();
         process.exit();
     }
+    const config: ScraperConfig = {
+        query: city,
+        quickCheckUpdates: options.quickCheck,
+        skipExistingRecords: true,
+        waitSelectorTimeoutMs: 60_000,
+        pageQueryIntervalMs: 10_000,
+    };
     const scraper = (() => ({
-        olx: () =>
-            new OlxScraper({
-                logger,
-                config: {
-                    query: city,
-                    quickCheckUpdates: options.quickCheck,
-                    skipExistingRecords: true,
-                    waitSelectorTimeoutMs: 5000,
-                    pageQueryIntervalMs: 10_000,
-                },
-            }),
-        airbnb: () =>
-            new AirbnbScraper({
-                logger,
-                config: {
-                    query: city,
-                    quickCheckUpdates: options.quickCheck,
-                    skipExistingRecords: true,
-                    waitSelectorTimeoutMs: 5000,
-                    pageQueryIntervalMs: 10_000,
-                },
-            }),
+        olx: () => new OlxScraper({ logger, config }),
+        airbnb: () => new AirbnbScraper({ logger, config }),
     }))()[source]();
     let scrapedRecordsCount = 0;
     scraper.on('recordScraped', () => {
